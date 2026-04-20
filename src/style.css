@@ -68,6 +68,34 @@ html, body {
   font-weight: 500;
 }
 
+/* Start screen */
+#start-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(26, 26, 26, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+#start-screen.hidden { display: none; }
+
+#start-content {
+  text-align: center;
+  color: #fff;
+}
+#start-icon {
+  font-size: 64px;
+  margin-bottom: 20px;
+}
+#start-content p {
+  font-size: 26px;
+  font-weight: 500;
+  opacity: 0.9;
+}
+
 /* Countdown */
 #countdown {
   position: fixed;

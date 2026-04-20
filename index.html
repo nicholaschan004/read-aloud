@@ -13,6 +13,14 @@
   <video id="video" autoplay playsinline muted></video>
   <canvas id="canvas" style="display:none"></canvas>
 
+  <!-- iOS requires a real tap before any audio will play. This screen provides that. -->
+  <div id="start-screen">
+    <div id="start-content">
+      <div id="start-icon">👂</div>
+      <p>Tap anywhere to start</p>
+    </div>
+  </div>
+
   <div id="overlay">
 
     <div id="status-bar">

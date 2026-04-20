@@ -2,36 +2,101 @@ import { HandLandmarker, FilesetResolver } from
   'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs';
 
 // DOM
-const video      = document.getElementById('video');
-const canvas     = document.getElementById('canvas');
-const ctx        = canvas.getContext('2d');
-const statusDot  = document.getElementById('status-dot');
-const statusText = document.getElementById('status-text');
-const answerCard = document.getElementById('answer-card');
-const answerText = document.getElementById('answer-text');
-const speakBtn   = document.getElementById('speak-btn');
-const countdownEl= document.getElementById('countdown');
+const video       = document.getElementById('video');
+const canvas      = document.getElementById('canvas');
+const ctx         = canvas.getContext('2d');
+const statusDot   = document.getElementById('status-dot');
+const statusText  = document.getElementById('status-text');
+const answerCard  = document.getElementById('answer-card');
+const answerText  = document.getElementById('answer-text');
+const speakBtn    = document.getElementById('speak-btn');
+const countdownEl = document.getElementById('countdown');
+const startScreen = document.getElementById('start-screen');
 
 // Config
-const WASM_URL   = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
-const MODEL_URL  = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
-const PINCH_CLOSE     = 0.07;  // normalized dist — fingers together
-const PINCH_OPEN      = 0.12;  // normalized dist — fingers clearly apart (hysteresis)
+const WASM_URL        = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
+const MODEL_URL       = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+const PINCH_CLOSE     = 0.07;
+const PINCH_OPEN      = 0.12;
 const COUNTDOWN_SECS  = 2;
-const REARM_DELAY_MS  = 4000;  // min gap between triggers
+const REARM_DELAY_MS  = 4000;
 const CAPTURE_W       = 768;
-const DETECT_INTERVAL = 100;   // ms between hand detection frames (~10fps)
+const DETECT_INTERVAL = 100;
 
 // State
-let handLandmarker  = null;
-let pinchState      = 'open'; // 'open' | 'pinched'
-let countdownTimer  = null;
-let lastTriggerAt   = 0;
-let analyzing       = false;
-let currentAnswer   = '';
-let lastDetectTime  = 0;
+let handLandmarker = null;
+let pinchState     = 'open';
+let countdownTimer = null;
+let lastTriggerAt  = 0;
+let analyzing      = false;
+let currentAnswer  = '';
+let lastDetectTime = 0;
+let audioCtx       = null;
 
-// ── UI ───────────────────────────────────────────────────────────────────
+// ── Audio ─────────────────────────────────────────────────────────────────
+// Must be called from inside a user gesture (the start-screen tap).
+function initAudio() {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+
+function playTick() {
+  if (!audioCtx) return;
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+
+  // Short noise burst shaped to sound like a clock tick
+  const sampleRate = audioCtx.sampleRate;
+  const len = Math.floor(sampleRate * 0.04);
+  const buf = audioCtx.createBuffer(1, len, sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) {
+    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 12);
+  }
+
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.frequency.value = 1400;
+  filter.Q.value = 1.2;
+
+  const gain = audioCtx.createGain();
+  gain.gain.value = 0.7;
+
+  src.connect(filter);
+  filter.connect(gain);
+  gain.connect(audioCtx.destination);
+  src.start();
+}
+
+// ── TTS ───────────────────────────────────────────────────────────────────
+function speak(text) {
+  if (!('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  setTimeout(() => {
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.rate = 0.88;
+    utt.pitch = 1.0;
+    utt.volume = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const preferred = voices.find(v => /Samantha|Karen|Moira|Victoria/i.test(v.name))
+      || voices.find(v => v.lang.startsWith('en') && v.localService);
+    if (preferred) utt.voice = preferred;
+    window.speechSynthesis.speak(utt);
+  }, 150);
+}
+
+// Keep iOS from silently pausing synthesis mid-sentence
+setInterval(() => {
+  if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+}, 4000);
+
+window.speechSynthesis.getVoices();
+window.speechSynthesis.addEventListener('voiceschanged', () => window.speechSynthesis.getVoices());
+
+speakBtn.addEventListener('click', () => { if (currentAnswer) speak(currentAnswer); });
+
+// ── UI ────────────────────────────────────────────────────────────────────
 function setStatus(state, text) {
   statusDot.className = state;
   statusText.textContent = text;
@@ -43,6 +108,7 @@ function showCountdown(n) {
   } else {
     countdownEl.textContent = n;
     countdownEl.classList.remove('hidden');
+    playTick();
   }
 }
 
@@ -56,50 +122,7 @@ function hideAnswer() {
   answerCard.classList.add('hidden');
 }
 
-// ── TTS ──────────────────────────────────────────────────────────────────
-// iOS Safari requires speech synthesis to be triggered once inside a real
-// touch/click event before it will work from async callbacks.
-let speechUnlocked = false;
-
-function unlockSpeech() {
-  if (speechUnlocked) return;
-  speechUnlocked = true;
-  const silent = new SpeechSynthesisUtterance('');
-  silent.volume = 0;
-  window.speechSynthesis.speak(silent);
-}
-
-document.addEventListener('touchstart', unlockSpeech, { once: true });
-document.addEventListener('click',      unlockSpeech, { once: true });
-
-// iOS sometimes silently pauses synthesis — keep it alive.
-setInterval(() => {
-  if (window.speechSynthesis.paused) window.speechSynthesis.resume();
-}, 4000);
-
-function speak(text) {
-  if (!('speechSynthesis' in window)) return;
-  window.speechSynthesis.cancel();
-  // Small delay lets cancel() fully clear before the new utterance queues (iOS quirk).
-  setTimeout(() => {
-    const utt = new SpeechSynthesisUtterance(text);
-    utt.rate = 0.88;
-    utt.pitch = 1.0;
-    utt.volume = 1.0;
-    const voices = window.speechSynthesis.getVoices();
-    const preferred = voices.find(v => /Samantha|Karen|Moira|Victoria/i.test(v.name))
-      || voices.find(v => v.lang.startsWith('en') && v.localService);
-    if (preferred) utt.voice = preferred;
-    window.speechSynthesis.speak(utt);
-  }, 120);
-}
-
-speakBtn.addEventListener('click', () => {
-  unlockSpeech(); // treat the button tap as the unlock too
-  if (currentAnswer) speak(currentAnswer);
-});
-
-// ── Capture + Analyze ────────────────────────────────────────────────────
+// ── Capture + Analyze ─────────────────────────────────────────────────────
 function captureDataURL() {
   const aspect = video.videoHeight / video.videoWidth;
   canvas.width = CAPTURE_W;
@@ -137,7 +160,7 @@ async function analyzeFrame() {
   analyzing = false;
 }
 
-// ── Countdown ────────────────────────────────────────────────────────────
+// ── Countdown ─────────────────────────────────────────────────────────────
 function startCountdown() {
   let remaining = COUNTDOWN_SECS;
   setStatus('thinking', 'Hold still…');
@@ -158,14 +181,13 @@ function startCountdown() {
 
 // ── Pinch Detection ───────────────────────────────────────────────────────
 function pinchDistance(landmarks) {
-  const thumb = landmarks[4]; // thumb tip
-  const index = landmarks[8]; // index finger tip
-  return Math.hypot(thumb.x - index.x, thumb.y - index.y);
+  const t = landmarks[4];
+  const i = landmarks[8];
+  return Math.hypot(t.x - i.x, t.y - i.y);
 }
 
 function detectLoop() {
   requestAnimationFrame(detectLoop);
-
   if (!handLandmarker || video.readyState < 2) return;
   if (analyzing || countdownTimer) return;
 
@@ -174,11 +196,7 @@ function detectLoop() {
   lastDetectTime = now;
 
   const results = handLandmarker.detectForVideo(video, now);
-
-  if (!results.landmarks.length) {
-    pinchState = 'open';
-    return;
-  }
+  if (!results.landmarks.length) { pinchState = 'open'; return; }
 
   const dist = pinchDistance(results.landmarks[0]);
 
@@ -208,9 +226,6 @@ async function startCamera() {
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────
-window.speechSynthesis.getVoices();
-window.speechSynthesis.addEventListener('voiceschanged', () => window.speechSynthesis.getVoices());
-
 async function boot() {
   setStatus('', 'Loading…');
   try {
@@ -221,13 +236,28 @@ async function boot() {
       runningMode: 'VIDEO',
       numHands: 1,
     });
-    setStatus('ready', 'Pinch to take a photo');
-    requestAnimationFrame(detectLoop);
+    // Ready — wait for the user to tap the start screen
+    startScreen.querySelector('p').textContent = 'Tap anywhere to start';
   } catch (err) {
     if (err.message !== 'camera') {
       setStatus('error', 'Could not load gesture detection');
     }
   }
 }
+
+// The start-screen tap is the one guaranteed user gesture on iOS.
+// We init AudioContext and unlock SpeechSynthesis here, then dismiss the screen.
+startScreen.addEventListener('click', () => {
+  initAudio();
+
+  // Unlock SpeechSynthesis with a silent utterance inside this gesture
+  const silent = new SpeechSynthesisUtterance('');
+  silent.volume = 0;
+  window.speechSynthesis.speak(silent);
+
+  startScreen.classList.add('hidden');
+  setStatus('ready', 'Pinch to take a photo');
+  requestAnimationFrame(detectLoop);
+}, { once: true });
 
 boot();
