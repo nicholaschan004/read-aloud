@@ -9,4 +9,10 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      // Keep CDN imports as-is — don't try to bundle them
+      external: (id) => id.startsWith('https://'),
+    },
+  },
 });
