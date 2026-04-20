@@ -22,6 +22,7 @@ const COUNTDOWN_SECS  = 2;
 const REARM_DELAY_MS  = 4000;
 const CAPTURE_W       = 768;
 const DETECT_INTERVAL = 100;
+const COUNT_WORDS     = ['', 'one', 'two', 'three'];
 
 // State
 let handLandmarker = null;
@@ -32,9 +33,9 @@ let analyzing      = false;
 let currentAnswer  = '';
 let lastDetectTime = 0;
 let audioCtx       = null;
+let _utt           = null; // module-level ref prevents iOS GC of utterance
 
-// ── Audio ─────────────────────────────────────────────────────────────────
-// Must be called from inside a user gesture (the start-screen tap).
+// ── Audio (Web Audio ticks) ───────────────────────────────────────────────
 function initAudio() {
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 }
@@ -42,51 +43,46 @@ function initAudio() {
 function playTick() {
   if (!audioCtx) return;
   if (audioCtx.state === 'suspended') audioCtx.resume();
-
-  // Short noise burst shaped to sound like a clock tick
-  const sampleRate = audioCtx.sampleRate;
-  const len = Math.floor(sampleRate * 0.04);
-  const buf = audioCtx.createBuffer(1, len, sampleRate);
+  const rate = audioCtx.sampleRate;
+  const len  = Math.floor(rate * 0.04);
+  const buf  = audioCtx.createBuffer(1, len, rate);
   const data = buf.getChannelData(0);
-  for (let i = 0; i < len; i++) {
-    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 12);
-  }
-
-  const src = audioCtx.createBufferSource();
-  src.buffer = buf;
-
+  for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 12);
+  const src    = audioCtx.createBufferSource();
+  src.buffer   = buf;
   const filter = audioCtx.createBiquadFilter();
-  filter.type = 'bandpass';
+  filter.type  = 'bandpass';
   filter.frequency.value = 1400;
   filter.Q.value = 1.2;
-
   const gain = audioCtx.createGain();
   gain.gain.value = 0.7;
-
-  src.connect(filter);
-  filter.connect(gain);
-  gain.connect(audioCtx.destination);
+  src.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination);
   src.start();
 }
 
 // ── TTS ───────────────────────────────────────────────────────────────────
+function getVoice() {
+  const voices = window.speechSynthesis.getVoices();
+  return voices.find(v => /Samantha|Karen|Moira|Victoria/i.test(v.name))
+    || voices.find(v => v.lang.startsWith('en') && v.localService)
+    || null;
+}
+
 function speak(text) {
   if (!('speechSynthesis' in window)) return;
   window.speechSynthesis.cancel();
-  setTimeout(() => {
-    const utt = new SpeechSynthesisUtterance(text);
-    utt.rate = 0.88;
-    utt.pitch = 1.0;
-    utt.volume = 1.0;
-    const voices = window.speechSynthesis.getVoices();
-    const preferred = voices.find(v => /Samantha|Karen|Moira|Victoria/i.test(v.name))
-      || voices.find(v => v.lang.startsWith('en') && v.localService);
-    if (preferred) utt.voice = preferred;
-    window.speechSynthesis.speak(utt);
-  }, 150);
+  // Keeping _utt at module scope prevents iOS garbage-collecting it mid-speech.
+  _utt = new SpeechSynthesisUtterance(text);
+  _utt.rate   = 0.88;
+  _utt.pitch  = 1.0;
+  _utt.volume = 1.0;
+  const v = getVoice();
+  if (v) _utt.voice = v;
+  // Small delay: iOS needs cancel() to fully clear before the next speak().
+  setTimeout(() => window.speechSynthesis.speak(_utt), 120);
 }
 
-// Keep iOS from silently pausing synthesis mid-sentence
+// iOS sometimes silently pauses synthesis mid-sentence — keep it alive.
 setInterval(() => {
   if (window.speechSynthesis.paused) window.speechSynthesis.resume();
 }, 4000);
@@ -109,6 +105,7 @@ function showCountdown(n) {
     countdownEl.textContent = n;
     countdownEl.classList.remove('hidden');
     playTick();
+    speak(COUNT_WORDS[n] || String(n));
   }
 }
 
@@ -125,7 +122,7 @@ function hideAnswer() {
 // ── Capture + Analyze ─────────────────────────────────────────────────────
 function captureDataURL() {
   const aspect = video.videoHeight / video.videoWidth;
-  canvas.width = CAPTURE_W;
+  canvas.width  = CAPTURE_W;
   canvas.height = Math.round(CAPTURE_W * aspect);
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL('image/jpeg', 0.82);
@@ -134,26 +131,31 @@ function captureDataURL() {
 async function analyzeFrame() {
   analyzing = true;
   setStatus('thinking', 'Looking…');
+  speak('Just a moment.');
 
   try {
-    const res = await fetch('/api/analyze', {
+    const res  = await fetch('/api/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ image: captureDataURL() }),
     });
     const data = await res.json();
+
     if (data.nothing) {
       hideAnswer();
       setStatus('ready', 'Pinch to take a photo');
+      speak("I don't see a question. Try pointing the camera at a form or screen.");
     } else if (data.answer) {
       showAnswer(data.answer);
       speak(data.answer);
       setStatus('ready', 'Pinch again for another');
     } else {
       setStatus('', 'Pinch to take a photo');
+      speak('Ready. Pinch to take a photo.');
     }
   } catch {
-    setStatus('error', 'Connection problem — try again');
+    setStatus('error', 'Connection problem');
+    speak('Having trouble connecting. Please try again.');
   }
 
   lastTriggerAt = Date.now();
@@ -236,7 +238,6 @@ async function boot() {
       runningMode: 'VIDEO',
       numHands: 1,
     });
-    // Ready — wait for the user to tap the start screen
     startScreen.querySelector('p').textContent = 'Tap anywhere to start';
   } catch (err) {
     if (err.message !== 'camera') {
@@ -245,15 +246,20 @@ async function boot() {
   }
 }
 
-// The start-screen tap is the one guaranteed user gesture on iOS.
-// We init AudioContext and unlock SpeechSynthesis here, then dismiss the screen.
+// The start-screen tap is the guaranteed user gesture iOS requires for audio.
+// We init AudioContext and fire a real (inaudible) utterance here so that
+// all future speak() calls work — iOS won't allow audio from async code
+// unless speech has been triggered at least once inside a touch handler.
 startScreen.addEventListener('click', () => {
   initAudio();
 
-  // Unlock SpeechSynthesis with a silent utterance inside this gesture
-  const silent = new SpeechSynthesisUtterance('');
-  silent.volume = 0;
-  window.speechSynthesis.speak(silent);
+  // Speak a real (silent) word now; iOS unlocks the synthesis engine.
+  // On completion, speak the welcome prompt.
+  _utt = new SpeechSynthesisUtterance('a');
+  _utt.volume = 0;
+  _utt.rate   = 10;
+  _utt.onend  = () => speak('Ready. Pinch your fingers to take a photo.');
+  window.speechSynthesis.speak(_utt);
 
   startScreen.classList.add('hidden');
   setStatus('ready', 'Pinch to take a photo');
