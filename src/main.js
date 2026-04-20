@@ -57,21 +57,47 @@ function hideAnswer() {
 }
 
 // ── TTS ──────────────────────────────────────────────────────────────────
+// iOS Safari requires speech synthesis to be triggered once inside a real
+// touch/click event before it will work from async callbacks.
+let speechUnlocked = false;
+
+function unlockSpeech() {
+  if (speechUnlocked) return;
+  speechUnlocked = true;
+  const silent = new SpeechSynthesisUtterance('');
+  silent.volume = 0;
+  window.speechSynthesis.speak(silent);
+}
+
+document.addEventListener('touchstart', unlockSpeech, { once: true });
+document.addEventListener('click',      unlockSpeech, { once: true });
+
+// iOS sometimes silently pauses synthesis — keep it alive.
+setInterval(() => {
+  if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+}, 4000);
+
 function speak(text) {
   if (!('speechSynthesis' in window)) return;
   window.speechSynthesis.cancel();
-  const utt = new SpeechSynthesisUtterance(text);
-  utt.rate = 0.88;
-  utt.pitch = 1.0;
-  utt.volume = 1.0;
-  const voices = window.speechSynthesis.getVoices();
-  const preferred = voices.find(v => /Samantha|Karen|Moira|Victoria/i.test(v.name))
-    || voices.find(v => v.lang.startsWith('en') && v.localService);
-  if (preferred) utt.voice = preferred;
-  window.speechSynthesis.speak(utt);
+  // Small delay lets cancel() fully clear before the new utterance queues (iOS quirk).
+  setTimeout(() => {
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.rate = 0.88;
+    utt.pitch = 1.0;
+    utt.volume = 1.0;
+    const voices = window.speechSynthesis.getVoices();
+    const preferred = voices.find(v => /Samantha|Karen|Moira|Victoria/i.test(v.name))
+      || voices.find(v => v.lang.startsWith('en') && v.localService);
+    if (preferred) utt.voice = preferred;
+    window.speechSynthesis.speak(utt);
+  }, 120);
 }
 
-speakBtn.addEventListener('click', () => { if (currentAnswer) speak(currentAnswer); });
+speakBtn.addEventListener('click', () => {
+  unlockSpeech(); // treat the button tap as the unlock too
+  if (currentAnswer) speak(currentAnswer);
+});
 
 // ── Capture + Analyze ────────────────────────────────────────────────────
 function captureDataURL() {
