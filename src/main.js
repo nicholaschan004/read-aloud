@@ -14,9 +14,8 @@ const gestureBtn  = document.getElementById('gesture-btn');
 
 // ── Gesture config ────────────────────────────────────────────────────────
 const GESTURES = [
-  { id: 'tap',   icon: '👆', label: 'Tap',   hint: 'Tap screen to capture' },
-  { id: 'wave',  icon: '🤚', label: 'Wave',  hint: 'Wave hand to capture'  },
-  { id: 'pinch', icon: '🤌', label: 'Pinch', hint: 'Pinch to capture'      },
+  { id: 'wave',  icon: '🤚', label: 'Wave',  hint: 'Wave hand to capture' },
+  { id: 'pinch', icon: '🤌', label: 'Pinch', hint: 'Pinch to capture'     },
 ];
 let gestureModeIdx = parseInt(localStorage.getItem('gestureModeIdx') || '0');
 const gesture = () => GESTURES[gestureModeIdx];
