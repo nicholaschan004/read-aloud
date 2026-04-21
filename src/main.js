@@ -34,7 +34,6 @@ let analyzing      = false;
 let currentAnswer  = '';
 let lastDetectTime = 0;
 let audioCtx       = null;
-let _utt           = null; // module-level ref prevents iOS GC of utterance
 
 // ── Audio (Web Audio ticks) ───────────────────────────────────────────────
 function initAudio() {
@@ -88,32 +87,43 @@ function playTick() {
   src.start();
 }
 
-// ── TTS ───────────────────────────────────────────────────────────────────
-function getVoice() {
-  const voices = window.speechSynthesis.getVoices();
-  return voices.find(v => /Samantha|Karen|Moira|Victoria/i.test(v.name))
-    || voices.find(v => v.lang.startsWith('en') && v.localService)
-    || null;
-}
+// ── TTS (OpenAI nova voice, browser synthesis fallback) ───────────────────
+let _utt         = null; // prevents iOS GC of SpeechSynthesisUtterance
+let _speechSource = null;
 
-function speak(text) {
-  if (!('speechSynthesis' in window)) return;
+async function speak(text) {
+  try { _speechSource?.stop(); } catch {}
+  _speechSource = null;
   window.speechSynthesis.cancel();
-  // Keeping _utt at module scope prevents iOS garbage-collecting it mid-speech.
-  _utt = new SpeechSynthesisUtterance(text);
-  _utt.rate   = 0.88;
-  _utt.pitch  = 1.0;
-  _utt.volume = 1.0;
-  const v = getVoice();
-  if (v) _utt.voice = v;
-  // Small delay: iOS needs cancel() to fully clear before the next speak().
-  setTimeout(() => window.speechSynthesis.speak(_utt), 120);
-}
 
-// iOS sometimes silently pauses synthesis mid-sentence — keep it alive.
-setInterval(() => {
-  if (window.speechSynthesis.paused) window.speechSynthesis.resume();
-}, 4000);
+  try {
+    if (!audioCtx) throw new Error('no audio context');
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+    const res = await fetch('/api/speak', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) throw new Error('TTS request failed');
+
+    const audioBuffer = await audioCtx.decodeAudioData(await res.arrayBuffer());
+    _speechSource = audioCtx.createBufferSource();
+    _speechSource.buffer = audioBuffer;
+    _speechSource.connect(audioCtx.destination);
+    _speechSource.start();
+    _speechSource.onended = () => { _speechSource = null; };
+  } catch {
+    // Fallback to browser synthesis if OpenAI TTS fails
+    _utt = new SpeechSynthesisUtterance(text);
+    _utt.rate = 0.88;
+    const voices = window.speechSynthesis.getVoices();
+    const v = voices.find(v => /Samantha|Karen|Moira|Victoria/i.test(v.name))
+      || voices.find(v => v.lang.startsWith('en') && v.localService);
+    if (v) _utt.voice = v;
+    setTimeout(() => window.speechSynthesis.speak(_utt), 120);
+  }
+}
 
 window.speechSynthesis.getVoices();
 window.speechSynthesis.addEventListener('voiceschanged', () => window.speechSynthesis.getVoices());
