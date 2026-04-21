@@ -24,7 +24,6 @@ const COUNT_WORDS     = ['', 'one', 'two', 'three'];
 // ── State ─────────────────────────────────────────────────────────────────
 let audioCtx       = null;
 let _utt           = null;
-let _speechSource  = null;
 let countdownTimer = null;
 let lastTriggerAt  = 0;
 let analyzing      = false;
@@ -76,35 +75,17 @@ function triggerFlash() {
 }
 
 // ── TTS ───────────────────────────────────────────────────────────────────
-async function speak(text) {
-  try { _speechSource?.stop(); } catch {}
-  _speechSource = null;
+function speak(text) {
   window.speechSynthesis.cancel();
-  try {
-    if (!audioCtx) throw new Error('no ctx');
-    if (audioCtx.state === 'suspended') await audioCtx.resume();
-    const res = await fetch('/api/speak', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
-    });
-    if (!res.ok) throw new Error('tts failed');
-    const audioBuffer = await audioCtx.decodeAudioData(await res.arrayBuffer());
-    _speechSource = audioCtx.createBufferSource();
-    _speechSource.buffer = audioBuffer;
-    _speechSource.connect(audioCtx.destination);
-    _speechSource.start();
-    _speechSource.onended = () => { _speechSource = null; };
-  } catch {
-    _utt = new SpeechSynthesisUtterance(text);
-    _utt.rate = 0.85;
-    const voices = window.speechSynthesis.getVoices();
-    const v = voices.find(v => /Samantha|Nicky|Karen|Moira/i.test(v.name) && v.localService)
-      || voices.find(v => v.lang === 'en-US' && v.localService)
-      || voices.find(v => v.lang.startsWith('en'));
-    if (v) _utt.voice = v;
-    setTimeout(() => window.speechSynthesis.speak(_utt), 120);
-  }
+  _utt = new SpeechSynthesisUtterance(text);
+  _utt.rate = 0.85;
+  const voices = window.speechSynthesis.getVoices();
+  const v = voices.find(v => /Moira/i.test(v.name) && v.localService)
+    || voices.find(v => /Samantha|Nicky|Karen/i.test(v.name) && v.localService)
+    || voices.find(v => v.lang === 'en-US' && v.localService)
+    || voices.find(v => v.lang.startsWith('en'));
+  if (v) _utt.voice = v;
+  setTimeout(() => window.speechSynthesis.speak(_utt), 120);
 }
 
 setInterval(() => { if (window.speechSynthesis.paused) window.speechSynthesis.resume(); }, 5000);
@@ -244,10 +225,7 @@ async function boot() {
 
 startScreen.addEventListener('click', async () => {
   initAudio();
-  _utt = new SpeechSynthesisUtterance('a');
-  _utt.volume = 0; _utt.rate = 10;
-  _utt.onend = () => speak('Ready. Pinch your fingers to take a photo.');
-  window.speechSynthesis.speak(_utt);
+  speak('Ready. Pinch your fingers to take a photo.');
 
   startScreen.classList.add('hidden');
   setStatus('', 'Loading pinch detection…');

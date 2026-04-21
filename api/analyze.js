@@ -31,11 +31,10 @@ export default async function handler(req, res) {
 
 If it shows ANY kind of question — multiple choice, written exam, coding problem, math problem, technical question, form, survey, or assessment:
 - Read the question carefully
-- Give the correct answer clearly and directly
+- MOST IMPORTANTLY: Give the correct answer clearly, directly, and simply if possible 
 - For code questions: identify what the code does or what the output is
-- For multiple choice: state which option is correct and why in one sentence
+- For multiple choice: state only the correct option/options...however if prompted to explain then do so 
 - For written/technical questions: give a clear, accurate answer
-- Keep the total response under 60 words
 
 If there is truly NO question visible at all, respond with exactly: NOTHING
 
