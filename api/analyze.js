@@ -1,6 +1,11 @@
 import OpenAI from 'openai';
 
-const client = new OpenAI();
+const apiKey = process.env.OPENAI_API_KEY;
+if (!apiKey || apiKey === 'your_key_here') {
+  throw new Error('OPENAI_API_KEY is not set — add it to your .env file');
+}
+
+const client = new OpenAI({ apiKey });
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -45,7 +50,7 @@ Be warm and clear. No jargon. No complex sentences.`,
     if (text === 'NOTHING') return res.json({ nothing: true });
     res.json({ answer: text });
   } catch (err) {
-    console.error('OpenAI error:', err.message);
-    res.status(500).json({ error: err.message });
+    console.error('OpenAI error:', err.status, err.message);
+    res.status(500).json({ error: err.message || 'OpenAI request failed' });
   }
 }

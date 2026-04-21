@@ -171,6 +171,11 @@ async function analyzeFrame() {
     });
     const data = await res.json();
 
+    if (!res.ok) {
+      console.error('Server error:', data.error);
+      throw new Error(data.error || `Server error ${res.status}`);
+    }
+
     if (data.nothing) {
       hideAnswer();
       setStatus('ready', 'Pinch to take a photo');
@@ -183,9 +188,10 @@ async function analyzeFrame() {
       setStatus('', 'Pinch to take a photo');
       speak('Ready. Pinch to take a photo.');
     }
-  } catch {
-    setStatus('error', 'Connection problem');
-    speak('Having trouble connecting. Please try again.');
+  } catch (err) {
+    console.error('Analysis failed:', err.message);
+    setStatus('error', err.message || 'Connection problem');
+    speak('Something went wrong. Please try again.');
   }
 
   lastTriggerAt = Date.now();
