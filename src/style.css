@@ -155,23 +155,6 @@ html, body {
   margin-bottom: 18px;
 }
 
-#speak-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: none;
-  border: 1.5px solid var(--accent);
-  color: var(--accent);
-  font-size: 15px;
-  font-weight: 600;
-  padding: 9px 18px;
-  border-radius: 20px;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-#speak-btn svg { width: 18px; height: 18px; stroke: var(--accent); }
-#speak-btn:active { opacity: 0.6; }
-
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.3; }

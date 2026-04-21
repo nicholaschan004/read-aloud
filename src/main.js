@@ -6,7 +6,6 @@ const statusDot   = document.getElementById('status-dot');
 const statusText  = document.getElementById('status-text');
 const answerCard  = document.getElementById('answer-card');
 const answerText  = document.getElementById('answer-text');
-const speakBtn    = document.getElementById('speak-btn');
 const countdownEl = document.getElementById('countdown');
 const startScreen = document.getElementById('start-screen');
 const flashEl     = document.getElementById('flash');
@@ -111,7 +110,6 @@ async function speak(text) {
 setInterval(() => { if (window.speechSynthesis.paused) window.speechSynthesis.resume(); }, 5000);
 window.speechSynthesis.getVoices();
 window.speechSynthesis.addEventListener('voiceschanged', () => window.speechSynthesis.getVoices());
-speakBtn.addEventListener('click', () => { if (currentAnswer) speak(currentAnswer); });
 
 // ── UI ────────────────────────────────────────────────────────────────────
 function setStatus(state, text) {
