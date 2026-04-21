@@ -87,8 +87,8 @@ function playTick() {
   src.start();
 }
 
-// ── TTS (OpenAI nova voice, browser synthesis fallback) ───────────────────
-let _utt         = null; // prevents iOS GC of SpeechSynthesisUtterance
+// ── TTS (ElevenLabs Rachel via AudioContext, browser synthesis fallback) ──
+let _utt          = null;
 let _speechSource = null;
 
 async function speak(text) {
@@ -105,7 +105,7 @@ async function speak(text) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
     });
-    if (!res.ok) throw new Error('TTS request failed');
+    if (!res.ok) throw new Error('TTS failed');
 
     const audioBuffer = await audioCtx.decodeAudioData(await res.arrayBuffer());
     _speechSource = audioCtx.createBufferSource();
@@ -114,16 +114,21 @@ async function speak(text) {
     _speechSource.start();
     _speechSource.onended = () => { _speechSource = null; };
   } catch {
-    // Fallback to browser synthesis if OpenAI TTS fails
+    // Fallback to browser synthesis
     _utt = new SpeechSynthesisUtterance(text);
-    _utt.rate = 0.88;
+    _utt.rate = 0.85;
     const voices = window.speechSynthesis.getVoices();
-    const v = voices.find(v => /Samantha|Karen|Moira|Victoria/i.test(v.name))
-      || voices.find(v => v.lang.startsWith('en') && v.localService);
+    const v = voices.find(v => /Samantha|Nicky|Karen|Moira/i.test(v.name) && v.localService)
+      || voices.find(v => v.lang === 'en-US' && v.localService)
+      || voices.find(v => v.lang.startsWith('en'));
     if (v) _utt.voice = v;
     setTimeout(() => window.speechSynthesis.speak(_utt), 120);
   }
 }
+
+setInterval(() => {
+  if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+}, 5000);
 
 window.speechSynthesis.getVoices();
 window.speechSynthesis.addEventListener('voiceschanged', () => window.speechSynthesis.getVoices());
