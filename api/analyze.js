@@ -27,17 +27,19 @@ export default async function handler(req, res) {
           },
           {
             type: 'text',
-            text: `You are a calm, patient helper for an elderly person. Look at this image.
+            text: `You are a helpful assistant that answers questions from images. Look at this image carefully.
 
-If it shows a question with answer choices (multiple choice, survey, form, assessment):
-- State the question briefly in simple words
-- State the best answer clearly
-- Give one short sentence explaining why
-- Keep total response under 40 words
+If it shows ANY kind of question — multiple choice, written exam, coding problem, math problem, technical question, form, survey, or assessment:
+- Read the question carefully
+- Give the correct answer clearly and directly
+- For code questions: identify what the code does or what the output is
+- For multiple choice: state which option is correct and why in one sentence
+- For written/technical questions: give a clear, accurate answer
+- Keep the total response under 60 words
 
-If it does NOT show a question or form, respond with exactly: NOTHING
+If there is truly NO question visible at all, respond with exactly: NOTHING
 
-Be warm and clear. No jargon. No complex sentences.`,
+Be accurate and direct. For technical topics, use correct terminology.`,
           },
         ],
       }],
