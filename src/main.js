@@ -12,7 +12,12 @@ const startScreen = document.getElementById('start-screen');
 const flashEl     = document.getElementById('flash');
 
 // ── Gesture config ────────────────────────────────────────────────────────
-const gesture = () => ({ id: 'pinch', icon: '🤌', label: 'Pinch', hint: 'Pinch to capture' });
+const GESTURES = [
+  { id: 'wave',  icon: '🤚', label: 'Wave',  hint: 'Wave hand to capture' },
+  { id: 'pinch', icon: '🤌', label: 'Pinch', hint: 'Pinch to capture'     },
+];
+let gestureModeIdx = parseInt(localStorage.getItem('gestureModeIdx') || '0');
+const gesture = () => GESTURES[gestureModeIdx];
 
 // ── Constants ─────────────────────────────────────────────────────────────
 const COUNTDOWN_SECS  = 2;
@@ -347,16 +352,39 @@ async function initShake() {
 
 // ── Gesture mode switching ────────────────────────────────────────────────
 function applyGestureMode() {
-  const g = gesture();
-  gestureBtn.textContent = `${g.icon} ${g.label}`;
+  // Update bar button states
+  document.querySelectorAll('.gesture-opt').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.id === gesture().id);
+  });
+
+  // Stop wave loop
+  if (waveLoopId) { clearTimeout(waveLoopId); waveLoopId = null; }
   waveTriggered = false;
   lastWaveFrame = null;
 
-  if (g.id === 'pinch') {
-    loadPinch();
-  } else {
+  if (gesture().id === 'wave') {
     setReady();
+    waveLoop();
+  } else if (gesture().id === 'pinch') {
+    loadPinch();
   }
+}
+
+function buildGestureBar() {
+  const bar = document.getElementById('gesture-bar');
+  GESTURES.forEach((g, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'gesture-opt' + (i === gestureModeIdx ? ' active' : '');
+    btn.dataset.id = g.id;
+    btn.textContent = `${g.icon} ${g.label}`;
+    btn.addEventListener('click', () => {
+      if (gesture().id === g.id) return;
+      gestureModeIdx = i;
+      localStorage.setItem('gestureModeIdx', i);
+      applyGestureMode();
+    });
+    bar.appendChild(btn);
+  });
 }
 
 
@@ -395,8 +423,8 @@ startScreen.addEventListener('click', () => {
   window.speechSynthesis.speak(_utt);
 
   startScreen.classList.add('hidden');
+  buildGestureBar();
   applyGestureMode();
-  waveLoop(); // wave loop runs always; only acts when wave mode is active
 }, { once: true });
 
 boot();
