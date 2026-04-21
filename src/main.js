@@ -12,6 +12,7 @@ const answerText  = document.getElementById('answer-text');
 const speakBtn    = document.getElementById('speak-btn');
 const countdownEl = document.getElementById('countdown');
 const startScreen = document.getElementById('start-screen');
+const flashEl     = document.getElementById('flash');
 
 // Config
 const WASM_URL        = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
@@ -38,6 +39,33 @@ let _utt           = null; // module-level ref prevents iOS GC of utterance
 // ── Audio (Web Audio ticks) ───────────────────────────────────────────────
 function initAudio() {
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+
+function playShutter() {
+  if (!audioCtx) return;
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  const rate = audioCtx.sampleRate;
+  const now  = audioCtx.currentTime;
+
+  // Two quick mechanical clicks — shutter open then close
+  [0, 0.055].forEach((offset, i) => {
+    const len  = Math.floor(rate * (i === 0 ? 0.025 : 0.018));
+    const buf  = audioCtx.createBuffer(1, len, rate);
+    const data = buf.getChannelData(0);
+    for (let j = 0; j < len; j++) data[j] = (Math.random() * 2 - 1) * Math.pow(1 - j / len, 7);
+    const src  = audioCtx.createBufferSource();
+    src.buffer = buf;
+    const gain = audioCtx.createGain();
+    gain.gain.value = i === 0 ? 0.9 : 0.5;
+    src.connect(gain); gain.connect(audioCtx.destination);
+    src.start(now + offset);
+  });
+}
+
+function triggerFlash() {
+  flashEl.classList.remove('active');
+  void flashEl.offsetWidth; // force reflow to restart animation
+  flashEl.classList.add('active');
 }
 
 function playTick() {
@@ -130,6 +158,8 @@ function captureDataURL() {
 
 async function analyzeFrame() {
   analyzing = true;
+  triggerFlash();
+  playShutter();
   setStatus('thinking', 'Looking…');
   speak('Just a moment.');
 

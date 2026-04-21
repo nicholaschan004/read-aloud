@@ -68,6 +68,23 @@ html, body {
   font-weight: 500;
 }
 
+/* Camera flash */
+#flash {
+  position: fixed;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 50;
+}
+#flash.active {
+  animation: shutter-flash 0.45s ease-out forwards;
+}
+@keyframes shutter-flash {
+  0%   { opacity: 0.85; }
+  100% { opacity: 0; }
+}
+
 /* Start screen */
 #start-screen {
   position: fixed;

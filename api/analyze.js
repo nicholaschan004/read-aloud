@@ -1,6 +1,6 @@
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 
-const client = new Anthropic();
+const client = new OpenAI();
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -10,19 +10,17 @@ export default async function handler(req, res) {
   const { image } = req.body;
   if (!image) return res.status(400).json({ error: 'No image provided' });
 
-  const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
-
   try {
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+    const response = await client.chat.completions.create({
+      model: 'gpt-4o',
       max_tokens: 300,
       messages: [
         {
           role: 'user',
           content: [
             {
-              type: 'image',
-              source: { type: 'base64', media_type: 'image/jpeg', data: base64Data },
+              type: 'image_url',
+              image_url: { url: image, detail: 'high' },
             },
             {
               type: 'text',
@@ -43,11 +41,11 @@ Be warm and clear. No jargon. No complex sentences.`,
       ],
     });
 
-    const text = response.content[0].text.trim();
+    const text = response.choices[0].message.content.trim();
     if (text === 'NOTHING') return res.json({ nothing: true });
     res.json({ answer: text });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Could not analyze image' });
+    console.error('OpenAI error:', err.message);
+    res.status(500).json({ error: err.message });
   }
 }
