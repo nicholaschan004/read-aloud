@@ -10,15 +10,9 @@ const speakBtn    = document.getElementById('speak-btn');
 const countdownEl = document.getElementById('countdown');
 const startScreen = document.getElementById('start-screen');
 const flashEl     = document.getElementById('flash');
-const gestureBtn  = document.getElementById('gesture-btn');
 
 // ── Gesture config ────────────────────────────────────────────────────────
-const GESTURES = [
-  { id: 'wave',  icon: '🤚', label: 'Wave',  hint: 'Wave hand to capture' },
-  { id: 'pinch', icon: '🤌', label: 'Pinch', hint: 'Pinch to capture'     },
-];
-let gestureModeIdx = parseInt(localStorage.getItem('gestureModeIdx') || '0');
-const gesture = () => GESTURES[gestureModeIdx];
+const gesture = () => ({ id: 'pinch', icon: '🤌', label: 'Pinch', hint: 'Pinch to capture' });
 
 // ── Constants ─────────────────────────────────────────────────────────────
 const COUNTDOWN_SECS  = 2;
@@ -365,12 +359,6 @@ function applyGestureMode() {
   }
 }
 
-gestureBtn.addEventListener('click', () => {
-  gestureModeIdx = (gestureModeIdx + 1) % GESTURES.length;
-  localStorage.setItem('gestureModeIdx', gestureModeIdx);
-  applyGestureMode();
-  speak(`${gesture().label} mode.`);
-});
 
 // ── Camera ────────────────────────────────────────────────────────────────
 async function startCamera() {
