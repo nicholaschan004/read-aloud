@@ -2,13 +2,7 @@
 const video       = document.getElementById('video');
 const canvas      = document.getElementById('canvas');
 const ctx         = canvas.getContext('2d');
-const statusDot   = document.getElementById('status-dot');
-const statusText  = document.getElementById('status-text');
-const answerCard  = document.getElementById('answer-card');
-const answerText  = document.getElementById('answer-text');
-const countdownEl = document.getElementById('countdown');
 const startScreen = document.getElementById('start-screen');
-const flashEl     = document.getElementById('flash');
 
 // ── Constants ─────────────────────────────────────────────────────────────
 const WASM_URL        = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
@@ -25,7 +19,6 @@ let _utt           = null;
 let countdownTimer = null;
 let lastTriggerAt  = 0;
 let analyzing      = false;
-let currentAnswer  = '';
 let handLandmarker = null;
 let fingerSeen     = false;   // whether a finger/hand is currently in frame
 let lastDetectTime = 0;
@@ -66,12 +59,6 @@ function playShutter() {
   });
 }
 
-function triggerFlash() {
-  flashEl.classList.remove('active');
-  void flashEl.offsetWidth;
-  flashEl.classList.add('active');
-}
-
 // ── TTS ───────────────────────────────────────────────────────────────────
 function speak(text) {
   window.speechSynthesis.cancel();
@@ -90,33 +77,6 @@ setInterval(() => { if (window.speechSynthesis.paused) window.speechSynthesis.re
 window.speechSynthesis.getVoices();
 window.speechSynthesis.addEventListener('voiceschanged', () => window.speechSynthesis.getVoices());
 
-// ── UI ────────────────────────────────────────────────────────────────────
-function setStatus(state, text) {
-  statusDot.className = state;
-  statusText.textContent = text;
-}
-
-function showCountdown(n) {
-  if (n <= 0) {
-    countdownEl.classList.add('hidden');
-  } else {
-    countdownEl.textContent = n;
-    countdownEl.classList.remove('hidden');
-    playTick();
-    speak(COUNT_WORDS[n] || String(n));
-  }
-}
-
-function showAnswer(text) {
-  currentAnswer = text;
-  answerText.textContent = text;
-  answerCard.classList.remove('hidden');
-}
-
-function hideAnswer() {
-  answerCard.classList.add('hidden');
-}
-
 // ── Capture + Analyze ─────────────────────────────────────────────────────
 function captureDataURL() {
   const aspect = video.videoHeight / video.videoWidth;
@@ -128,9 +88,7 @@ function captureDataURL() {
 
 async function analyzeFrame() {
   analyzing = true;
-  triggerFlash();
   playShutter();
-  setStatus('thinking', 'Looking…');
   speak('Just a moment.');
   try {
     const res  = await fetch('/api/analyze', {
@@ -141,44 +99,33 @@ async function analyzeFrame() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `Server error ${res.status}`);
     if (data.nothing) {
-      hideAnswer();
-      document.body.classList.remove('active-view');
-      setStatus('ready', 'Show finger to capture');
       speak("I don't see a question. Try pointing the camera at a form or screen.");
     } else if (data.answer) {
-      showAnswer(data.answer);
       speak(data.answer);
-      setStatus('ready', 'Show finger for another');
-    } else {
-      document.body.classList.remove('active-view');
-      setStatus('ready', 'Show finger to capture');
     }
   } catch (err) {
     console.error('Analysis failed:', err.message);
-    document.body.classList.remove('active-view');
-    setStatus('error', err.message || 'Connection problem');
     speak('Something went wrong. Please try again.');
   }
   lastTriggerAt = Date.now();
   analyzing = false;
 }
 
-// ── Countdown ─────────────────────────────────────────────────────────────
+// ── Countdown (audio only) ────────────────────────────────────────────────
 function startCountdown() {
   if (analyzing || countdownTimer || Date.now() - lastTriggerAt < REARM_DELAY_MS) return;
-  document.body.classList.add('active-view');
   let remaining = COUNTDOWN_SECS;
-  setStatus('thinking', 'Hold still…');
-  showCountdown(remaining);
+  playTick();
+  speak(COUNT_WORDS[remaining] || String(remaining));
   countdownTimer = setInterval(() => {
     remaining--;
     if (remaining <= 0) {
       clearInterval(countdownTimer);
       countdownTimer = null;
-      showCountdown(0);
       analyzeFrame();
     } else {
-      showCountdown(remaining);
+      playTick();
+      speak(COUNT_WORDS[remaining] || String(remaining));
     }
   }, 1000);
 }
@@ -213,14 +160,13 @@ async function startCamera() {
     video.srcObject = stream;
     await video.play();
   } catch {
-    setStatus('error', 'Camera not available');
+    speak('Camera not available.');
     throw new Error('camera');
   }
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────
 async function boot() {
-  setStatus('', 'Loading…');
   try { await startCamera(); } catch {}
   startScreen.querySelector('p').textContent = 'Tap anywhere to start';
 }
@@ -230,7 +176,6 @@ startScreen.addEventListener('click', async () => {
   speak('Ready. Show a finger to take a photo.');
 
   startScreen.classList.add('hidden');
-  setStatus('', 'Loading hand detection…');
 
   try {
     const { HandLandmarker, FilesetResolver } = await import(
@@ -242,10 +187,10 @@ startScreen.addEventListener('click', async () => {
       runningMode: 'VIDEO',
       numHands: 1,
     });
-    setStatus('ready', 'Show finger to capture');
+    speak('Listening.');
     requestAnimationFrame(detectLoop);
   } catch {
-    setStatus('error', 'Hand detection unavailable');
+    speak('Hand detection is not available.');
   }
 }, { once: true });
 
