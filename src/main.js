@@ -13,8 +13,6 @@ const flashEl     = document.getElementById('flash');
 // ── Constants ─────────────────────────────────────────────────────────────
 const WASM_URL        = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
 const MODEL_URL       = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
-const FINGER_UP_THRESH  = 0.08;   // index tip must be this far above its knuckle (normalised Y)
-const FINGER_DOWN_THRESH = 0.04;  // hysteresis — finger must drop back before re-trigger
 const DETECT_INTERVAL = 100;
 const COUNTDOWN_SECS  = 2;
 const REARM_DELAY_MS  = 4000;
@@ -29,7 +27,7 @@ let lastTriggerAt  = 0;
 let analyzing      = false;
 let currentAnswer  = '';
 let handLandmarker = null;
-let fingerState    = 'down';   // 'down' | 'up'
+let fingerSeen     = false;   // whether a finger/hand is currently in frame
 let lastDetectTime = 0;
 
 // ── Audio ─────────────────────────────────────────────────────────────────
@@ -144,14 +142,14 @@ async function analyzeFrame() {
     if (!res.ok) throw new Error(data.error || `Server error ${res.status}`);
     if (data.nothing) {
       hideAnswer();
-      setStatus('ready', 'Raise finger to capture');
+      setStatus('ready', 'Show finger to capture');
       speak("I don't see a question. Try pointing the camera at a form or screen.");
     } else if (data.answer) {
       showAnswer(data.answer);
       speak(data.answer);
-      setStatus('ready', 'Raise finger for another');
+      setStatus('ready', 'Show finger for another');
     } else {
-      setStatus('ready', 'Raise finger to capture');
+      setStatus('ready', 'Show finger to capture');
     }
   } catch (err) {
     console.error('Analysis failed:', err.message);
@@ -181,12 +179,9 @@ function startCountdown() {
   }, 1000);
 }
 
-// ── Finger-Raise Detection (MediaPipe) ────────────────────────────────────
-function isFingerCurled(landmarks, tipIdx, mcpIdx) {
-  // A finger is "curled" when its tip is below (higher Y) its MCP joint
-  return landmarks[tipIdx].y > landmarks[mcpIdx].y;
-}
-
+// ── Finger Detection (MediaPipe) ──────────────────────────────────────────
+// Any finger/hand appearing in the camera triggers capture.
+// Hand must leave frame before it can trigger again.
 function detectLoop() {
   requestAnimationFrame(detectLoop);
   if (!handLandmarker || video.readyState < 2 || analyzing || countdownTimer) return;
@@ -194,23 +189,13 @@ function detectLoop() {
   if (now - lastDetectTime < DETECT_INTERVAL) return;
   lastDetectTime = now;
   const results = handLandmarker.detectForVideo(video, now);
-  if (!results.landmarks.length) { fingerState = 'down'; return; }
-  const lm = results.landmarks[0];
+  const handVisible = results.landmarks.length > 0;
 
-  // Index finger extended: tip (8) well above MCP knuckle (5)
-  const indexRaise = lm[5].y - lm[8].y;            // positive = tip above knuckle
-
-  // Other fingers should be curled (tip below their PIP/MCP)
-  const middleCurled = isFingerCurled(lm, 12, 9);   // middle
-  const ringCurled   = isFingerCurled(lm, 16, 13);  // ring
-  const pinkyCurled  = isFingerCurled(lm, 20, 17);  // pinky
-  const othersCurled = middleCurled && ringCurled && pinkyCurled;
-
-  if (fingerState === 'down' && indexRaise > FINGER_UP_THRESH && othersCurled) {
-    fingerState = 'up';
+  if (!fingerSeen && handVisible) {
+    fingerSeen = true;
     startCountdown();
-  } else if (fingerState === 'up' && indexRaise < FINGER_DOWN_THRESH) {
-    fingerState = 'down';
+  } else if (fingerSeen && !handVisible) {
+    fingerSeen = false;
   }
 }
 
@@ -238,7 +223,7 @@ async function boot() {
 
 startScreen.addEventListener('click', async () => {
   initAudio();
-  speak('Ready. Raise one finger to take a photo.');
+  speak('Ready. Show a finger to take a photo.');
 
   startScreen.classList.add('hidden');
   setStatus('', 'Loading hand detection…');
@@ -253,7 +238,7 @@ startScreen.addEventListener('click', async () => {
       runningMode: 'VIDEO',
       numHands: 1,
     });
-    setStatus('ready', 'Raise finger to capture');
+    setStatus('ready', 'Show finger to capture');
     requestAnimationFrame(detectLoop);
   } catch {
     setStatus('error', 'Hand detection unavailable');
