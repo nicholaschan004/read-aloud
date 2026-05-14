@@ -142,6 +142,7 @@ async function analyzeFrame() {
     if (!res.ok) throw new Error(data.error || `Server error ${res.status}`);
     if (data.nothing) {
       hideAnswer();
+      document.body.classList.remove('active-view');
       setStatus('ready', 'Show finger to capture');
       speak("I don't see a question. Try pointing the camera at a form or screen.");
     } else if (data.answer) {
@@ -149,10 +150,12 @@ async function analyzeFrame() {
       speak(data.answer);
       setStatus('ready', 'Show finger for another');
     } else {
+      document.body.classList.remove('active-view');
       setStatus('ready', 'Show finger to capture');
     }
   } catch (err) {
     console.error('Analysis failed:', err.message);
+    document.body.classList.remove('active-view');
     setStatus('error', err.message || 'Connection problem');
     speak('Something went wrong. Please try again.');
   }
@@ -163,6 +166,7 @@ async function analyzeFrame() {
 // ── Countdown ─────────────────────────────────────────────────────────────
 function startCountdown() {
   if (analyzing || countdownTimer || Date.now() - lastTriggerAt < REARM_DELAY_MS) return;
+  document.body.classList.add('active-view');
   let remaining = COUNTDOWN_SECS;
   setStatus('thinking', 'Hold still…');
   showCountdown(remaining);
