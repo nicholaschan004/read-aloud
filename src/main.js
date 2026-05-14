@@ -7,9 +7,9 @@ const startScreen = document.getElementById('start-screen');
 // ── Constants ─────────────────────────────────────────────────────────────
 const WASM_URL        = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
 const MODEL_URL       = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
-const DETECT_INTERVAL = 100;
+const DETECT_INTERVAL = 60;
 const COUNTDOWN_SECS  = 2;
-const REARM_DELAY_MS  = 4000;
+const REARM_DELAY_MS  = 2000;
 const CAPTURE_W       = 768;
 const COUNT_WORDS     = ['', 'one', 'two', 'three'];
 
@@ -186,6 +186,9 @@ startScreen.addEventListener('click', async () => {
       baseOptions: { modelAssetPath: MODEL_URL, delegate: 'GPU' },
       runningMode: 'VIDEO',
       numHands: 1,
+      minHandDetectionConfidence: 0.3,
+      minHandPresenceConfidence: 0.3,
+      minTrackingConfidence: 0.3,
     });
     speak('Listening.');
     requestAnimationFrame(detectLoop);
