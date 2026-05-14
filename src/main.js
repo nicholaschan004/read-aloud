@@ -13,8 +13,8 @@ const flashEl     = document.getElementById('flash');
 // ── Constants ─────────────────────────────────────────────────────────────
 const WASM_URL        = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm';
 const MODEL_URL       = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
-const PINCH_CLOSE     = 0.07;
-const PINCH_OPEN      = 0.12;
+const FINGER_UP_THRESH  = 0.08;   // index tip must be this far above its knuckle (normalised Y)
+const FINGER_DOWN_THRESH = 0.04;  // hysteresis — finger must drop back before re-trigger
 const DETECT_INTERVAL = 100;
 const COUNTDOWN_SECS  = 2;
 const REARM_DELAY_MS  = 4000;
@@ -29,7 +29,7 @@ let lastTriggerAt  = 0;
 let analyzing      = false;
 let currentAnswer  = '';
 let handLandmarker = null;
-let pinchState     = 'open';
+let fingerState    = 'down';   // 'down' | 'up'
 let lastDetectTime = 0;
 
 // ── Audio ─────────────────────────────────────────────────────────────────
@@ -144,14 +144,14 @@ async function analyzeFrame() {
     if (!res.ok) throw new Error(data.error || `Server error ${res.status}`);
     if (data.nothing) {
       hideAnswer();
-      setStatus('ready', 'Pinch to capture');
+      setStatus('ready', 'Raise finger to capture');
       speak("I don't see a question. Try pointing the camera at a form or screen.");
     } else if (data.answer) {
       showAnswer(data.answer);
       speak(data.answer);
-      setStatus('ready', 'Pinch again for another');
+      setStatus('ready', 'Raise finger for another');
     } else {
-      setStatus('ready', 'Pinch to capture');
+      setStatus('ready', 'Raise finger to capture');
     }
   } catch (err) {
     console.error('Analysis failed:', err.message);
@@ -181,23 +181,36 @@ function startCountdown() {
   }, 1000);
 }
 
-// ── Pinch Detection (MediaPipe) ───────────────────────────────────────────
-function pinchLoop() {
-  requestAnimationFrame(pinchLoop);
+// ── Finger-Raise Detection (MediaPipe) ────────────────────────────────────
+function isFingerCurled(landmarks, tipIdx, mcpIdx) {
+  // A finger is "curled" when its tip is below (higher Y) its MCP joint
+  return landmarks[tipIdx].y > landmarks[mcpIdx].y;
+}
+
+function detectLoop() {
+  requestAnimationFrame(detectLoop);
   if (!handLandmarker || video.readyState < 2 || analyzing || countdownTimer) return;
   const now = performance.now();
   if (now - lastDetectTime < DETECT_INTERVAL) return;
   lastDetectTime = now;
   const results = handLandmarker.detectForVideo(video, now);
-  if (!results.landmarks.length) { pinchState = 'open'; return; }
-  const t = results.landmarks[0][4];
-  const i = results.landmarks[0][8];
-  const dist = Math.hypot(t.x - i.x, t.y - i.y);
-  if (pinchState === 'open' && dist < PINCH_CLOSE) {
-    pinchState = 'pinched';
+  if (!results.landmarks.length) { fingerState = 'down'; return; }
+  const lm = results.landmarks[0];
+
+  // Index finger extended: tip (8) well above MCP knuckle (5)
+  const indexRaise = lm[5].y - lm[8].y;            // positive = tip above knuckle
+
+  // Other fingers should be curled (tip below their PIP/MCP)
+  const middleCurled = isFingerCurled(lm, 12, 9);   // middle
+  const ringCurled   = isFingerCurled(lm, 16, 13);  // ring
+  const pinkyCurled  = isFingerCurled(lm, 20, 17);  // pinky
+  const othersCurled = middleCurled && ringCurled && pinkyCurled;
+
+  if (fingerState === 'down' && indexRaise > FINGER_UP_THRESH && othersCurled) {
+    fingerState = 'up';
     startCountdown();
-  } else if (pinchState === 'pinched' && dist > PINCH_OPEN) {
-    pinchState = 'open';
+  } else if (fingerState === 'up' && indexRaise < FINGER_DOWN_THRESH) {
+    fingerState = 'down';
   }
 }
 
@@ -225,10 +238,10 @@ async function boot() {
 
 startScreen.addEventListener('click', async () => {
   initAudio();
-  speak('Ready. Pinch your fingers to take a photo.');
+  speak('Ready. Raise one finger to take a photo.');
 
   startScreen.classList.add('hidden');
-  setStatus('', 'Loading pinch detection…');
+  setStatus('', 'Loading hand detection…');
 
   try {
     const { HandLandmarker, FilesetResolver } = await import(
@@ -240,10 +253,10 @@ startScreen.addEventListener('click', async () => {
       runningMode: 'VIDEO',
       numHands: 1,
     });
-    setStatus('ready', 'Pinch to capture');
-    requestAnimationFrame(pinchLoop);
+    setStatus('ready', 'Raise finger to capture');
+    requestAnimationFrame(detectLoop);
   } catch {
-    setStatus('error', 'Pinch detection unavailable');
+    setStatus('error', 'Hand detection unavailable');
   }
 }, { once: true });
 
