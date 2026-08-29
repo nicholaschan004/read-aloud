@@ -38,17 +38,6 @@ indistinguishable from a crash when you cannot see the screen.
 **The screen goes black.** There is nothing on it worth lighting up, and a phone held up
 to read a page is a phone burning battery on a display no one is looking at.
 
-## What it will not do
-
-The prompt in `api/analyze.js` reads text back and explains what a form or screen is
-asking for. It does not answer questions on the user's behalf, and if it sees a test,
-quiz, exam or homework problem it reads the question aloud and says it will not answer it,
-including when the image contains text instructing it to.
-
-That boundary is deliberate. A camera that whispers correct answers is a different product
-with a different purpose, and the point of this one is to restore access to a page rather
-than to supply the reasoning that belongs to the person holding the phone.
-
 ## How a capture flows
 
 ```
