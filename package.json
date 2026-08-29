@@ -1,7 +1,7 @@
 {
   "name": "camreader",
   "version": "1.0.0",
-  "description": "Question helper for grandpa",
+  "description": "Hands free camera reader that speaks a page or screen aloud",
   "main": "server.js",
   "type": "module",
   "scripts": {

@@ -99,9 +99,9 @@ async function analyzeFrame() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `Server error ${res.status}`);
     if (data.nothing) {
-      speak("I don't see a question. Try pointing the camera at a form or screen.");
-    } else if (data.answer) {
-      speak(data.answer);
+      speak("I can't see anything to read. Try pointing the camera at the page or screen.");
+    } else if (data.text) {
+      speak(data.text);
     }
   } catch (err) {
     console.error('Analysis failed:', err.message);
@@ -173,7 +173,7 @@ async function boot() {
 
 startScreen.addEventListener('click', async () => {
   initAudio();
-  speak('Ready. Show a finger to take a photo.');
+  speak('Ready. Raise a finger and I will read what I see.');
 
   startScreen.classList.add('hidden');
 
